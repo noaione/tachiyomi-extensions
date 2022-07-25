@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.extension.all.komga.dto.PageDto
 import eu.kanade.tachiyomi.extension.all.komga.dto.PageWrapperDto
 import eu.kanade.tachiyomi.extension.all.komga.dto.ReadListDto
 import eu.kanade.tachiyomi.extension.all.komga.dto.SeriesDto
+import eu.kanade.tachiyomi.extension.all.komga.dto.SeriesMetadataDto
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.ConfigurableSource
@@ -268,11 +269,7 @@ open class Komga(suffix: String = "") : ConfigurableSource, UnmeteredSource, Htt
             title = metadata.title
             url = "$baseUrl/api/v1/series/$id"
             thumbnail_url = "$url/thumbnail"
-            status = when (metadata.status) {
-                "ONGOING" -> SManga.ONGOING
-                "ENDED" -> SManga.COMPLETED
-                else -> SManga.UNKNOWN
-            }
+            status = parseStatus(metadata, booksCount)
             genre = (metadata.genres + metadata.tags + booksMetadata.tags).distinct().joinToString(", ")
             description = metadata.summary.ifBlank { booksMetadata.summary }
             booksMetadata.authors.groupBy { it.role }.let { map ->
@@ -317,6 +314,26 @@ open class Komga(suffix: String = "") : ConfigurableSource, UnmeteredSource, Htt
                 }
             }
         }
+
+    private fun parseStatus(metadata: SeriesMetadataDto, booksCount: Int): Int {
+        val tempStatus = when (metadata.status) {
+            "ONGOING" -> SManga.ONGOING
+            "ABANDONED" -> SManga.CANCELLED
+            "ENDED" -> SManga.PUBLISHING_FINISHED
+            "HIATUS" -> SManga.ON_HIATUS
+            else -> SManga.UNKNOWN
+        }
+
+        val publishedOrCancelled = tempStatus == SManga.PUBLISHING_FINISHED ||
+            tempStatus == SManga.CANCELLED
+        val totalBookCount = metadata.totalBookCount ?: booksCount
+
+        return if (booksCount >= totalBookCount && publishedOrCancelled) {
+            SManga.COMPLETED
+        } else {
+            tempStatus
+        }
+    }
 
     override fun imageUrlParse(response: Response): String = ""
 
